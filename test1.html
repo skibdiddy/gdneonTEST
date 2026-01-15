@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geometry Dash Neon - Smooth Edition</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Arial Black', Arial, sans-serif;
+      background-color: #000;
+    }
+
+    html, body, #game-container {
+      height: 100%;
+      width: 100%;
+    }
+
+    #game-container {
+      position: relative;
+      background: #0a0a12;
+      overflow: hidden;
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* MENU STYLES */
+    #menu-screen {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #1e90ff 0%, #4169e1 100%);
+      z-index: 100;
+    }
+
+    #menu-screen.hidden { display: none; }
+
+    .menu-floor {
+      position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+      background: #1e3a5f; border-top: 4px solid #00ffff;
+    }
+
+    #game-title {
+      z-index: 102; text-align: center; margin-bottom: 20px;
+    }
+
+    .title-line {
+      font-size: 80px; color: #00ff00; text-shadow: 0 0 20px #00ff00;
+      line-height: 1; font-weight: 900;
+    }
+
+    #start-button {
+      padding: 20px 60px; font-size: 32px; font-weight: bold;
+      color: #fff; background: linear-gradient(135deg, #00ffff, #ff00ff);
+      border: none; border-radius: 10px; cursor: pointer; z-index: 102;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute; top: 20px; left: 20px;
+      color: #fff; font-size: 20px; z-index: 50; pointer-events: none;
+    }
+
+    #game-mode-display {
+      position: absolute; top: 20px; right: 20px;
+      color: #fff; font-size: 24px; font-weight: bold;
+      z-index: 50; padding: 10px 20px;
+      background: rgba(0, 0, 0, 0.6); border: 2px solid #00ffff;
+    }
+
+    #game-over-screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.9); z-index: 150;
+    }
+
+    #game-over-screen.show { display: flex; }
+
+    #restart-button {
+      padding: 15px 40px; font-size: 24px; color: #fff;
+      background: #43e97b; border: none; border-radius: 30px; cursor: pointer;
+    }
+  </style>
+ </head>
+ <body>
+  <div id="game-container">
+   <canvas id="game-canvas"></canvas>
+   
+   <div id="menu-screen">
+    <div class="menu-floor"></div>
+    <div id="game-title">
+      <div class="title-line">GEOMETRY</div>
+      <div class="title-line">NEON</div>
+    </div>
+    <button id="start-button">PLAY</button>
+   </div>
+
+   <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="distance">Distance: 0m</div>
+   </div>
+
+   <div id="game-mode-display">CUBE</div>
+
+   <div id="game-over-screen">
+    <h2 style="color:#ff4d4d; font-size: 50px;">CRASHED!</h2>
+    <p id="final-score" style="color:#fff; font-size: 24px; margin-bottom: 20px;"></p>
+    <button id="restart-button">RETRY</button>
+   </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const menuScreen = document.getElementById('menu-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startButton = document.getElementById('start-button');
+    const restartButton = document.getElementById('restart-button');
+    const scoreDisplay = document.getElementById('score');
+    const distanceDisplay = document.getElementById('distance');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const gameModeDisplay = document.getElementById('game-mode-display');
+
+    // CONFIG - FIXED SPEED FOR SMOOTHNESS
+    const GAME_SPEED = 7.5; 
+    const GRAVITY = 0.8;
+    const JUMP_FORCE = -14.5;
+    const WAVE_SPEED = 8;
+    const SPIDER_SPEED = 60; // Instant feel
+
+    let gameRunning = false;
+    let frameCount = 0;
+    let score = 0;
+    let gameMode = 'cube';
+    let groundY, ceilingY = 0;
+    let spawnTimer = 0;
+    let isHoldingJump = false;
+
+    const player = {
+      x: 120, y: 0, width: 40, height: 40,
+      velocityY: 0, rotation: 0, jumping: false,
+      ballFlipped: false, spiderFlipped: false
+    };
+
+    const obstacles = [];
+    const particles = [];
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      groundY = canvas.height - 100;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function startGame() {
+      menuScreen.classList.add('hidden');
+      gameOverScreen.classList.remove('show');
+      gameRunning = true;
+      score = 0;
+      frameCount = 0;
+      spawnTimer = 0;
+      gameMode = 'cube';
+      gameModeDisplay.textContent = 'CUBE';
+      
+      player.y = groundY - player.height;
+      player.velocityY = 0;
+      player.rotation = 0;
+      player.ballFlipped = false;
+      player.spiderFlipped = false;
+      
+      obstacles.length = 0;
+      particles.length = 0;
+      
+      requestAnimationFrame(loop);
+    }
+
+    function spawnObstacle() {
+      const chance = Math.random();
+      const x = canvas.width + 100;
+
+      // Special Pattern: 2 Blocks + 1 Spike + Orb
+      if (chance < 0.25) {
+        // Blocks
+        obstacles.push({ x, y: groundY - 40, w: 40, h: 40, type: 'block' });
+        obstacles.push({ x, y: groundY - 80, w: 40, h: 40, type: 'block' });
+        // Spike on top
+        obstacles.push({ x, y: groundY - 120, w: 40, h: 40, type: 'spike' });
+        // Required Orb to clear it
+        obstacles.push({ x: x - 60, y: groundY - 140, w: 40, h: 40, type: 'orb', active: true });
+      } 
+      else if (chance < 0.5) {
+        obstacles.push({ x, y: groundY - 40, w: 30, h: 40, type: 'spike' });
+      } 
+      else if (chance < 0.7 && gameMode !== 'cube') {
+        // Ceiling spike for other modes
+        obstacles.push({ x, y: 0, w: 30, h: 40, type: 'ceilingSpike' });
+      }
+      else {
+        obstacles.push({ x, y: groundY - 40, w: 40, h: 40, type: 'block' });
+      }
+    }
+
+    function spawnPortal() {
+      const modes = ['cube', 'ship', 'wave', 'ball', 'spider'];
+      const next = modes.filter(m => m !== gameMode)[Math.floor(Math.random() * 4)];
+      
+      obstacles.push({
+        x: canvas.width + 100,
+        y: 0, 
+        w: 60, 
+        h: groundY, // Stretch across the whole part
+        type: 'portal',
+        to: next
+      });
+    }
+
+    function loop() {
+      if (!gameRunning) return;
+      frameCount++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // --- 1. DRAW BACKGROUND & GROUND ---
+      ctx.fillStyle = '#0a0a12';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#1e3a5f';
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+      ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(canvas.width, groundY); ctx.stroke();
+
+      // --- 2. UPDATE PLAYER ---
+      if (gameMode === 'cube') {
+        player.velocityY += GRAVITY;
+        player.y += player.velocityY;
+        if (player.y >= groundY - player.height) {
+          player.y = groundY - player.height;
+          player.velocityY = 0;
+          player.jumping = false;
+          player.rotation = Math.round(player.rotation / (Math.PI/2)) * (Math.PI/2);
+        } else {
+          player.rotation += 0.12;
+        }
+      } else if (gameMode === 'ball') {
+        player.velocityY += player.ballFlipped ? -GRAVITY : GRAVITY;
+        player.y += player.velocityY;
+        if (player.y >= groundY - player.height) { player.y = groundY - player.height; player.velocityY = 0; }
+        if (player.y <= 0) { player.y = 0; player.velocityY = 0; }
+        player.rotation += 0.15;
+      } else if (gameMode === 'ship') {
+        player.velocityY += isHoldingJump ? -0.5 : 0.4;
+        player.velocityY = Math.max(-7, Math.min(7, player.velocityY));
+        player.y += player.velocityY;
+        if (player.y > groundY - player.height) player.y = groundY - player.height;
+        if (player.y < 0) player.y = 0;
+        player.rotation = player.velocityY * 0.1;
+      } else if (gameMode === 'wave') {
+        player.y += isHoldingJump ? -WAVE_SPEED : WAVE_SPEED;
+        if (player.y > groundY - player.height) player.y = groundY - player.height;
+        if (player.y < 0) player.y = 0;
+        player.rotation = isHoldingJump ? -0.6 : 0.6;
+      } else if (gameMode === 'spider') {
+        player.y += player.velocityY;
+        if (player.y >= groundY - player.height) { player.y = groundY - player.height; player.velocityY = 0; }
+        if (player.y <= 0) { player.y = 0; player.velocityY = 0; }
+      }
+
+      // --- 3. OBSTACLES ---
+      spawnTimer--;
+      if (spawnTimer <= 0) {
+        if (frameCount % 400 === 0) spawnPortal();
+        else spawnObstacle();
+        spawnTimer = 50 + Math.random() * 40;
+      }
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        o.x -= GAME_SPEED;
+
+        // Draw Portal
+        if (o.type === 'portal') {
+          const glow = Math.sin(frameCount * 0.1) * 10 + 20;
+          let grad = ctx.createLinearGradient(o.x, 0, o.x + o.w, 0);
+          grad.addColorStop(0, 'rgba(0, 255, 255, 0.2)');
+          grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+          grad.addColorStop(1, 'rgba(0, 255, 255, 0.2)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(o.x, 0, o.w, groundY);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(o.x, 0, o.w, groundY);
+          ctx.fillStyle = '#fff'; ctx.font = '20px Arial'; ctx.textAlign = 'center';
+          ctx.fillText(o.to.toUpperCase(), o.x + o.w/2, groundY/2);
+        } 
+        // Draw Orb
+        else if (o.type === 'orb') {
+          ctx.fillStyle = o.active ? '#ffff00' : 'rgba(255,255,0,0.2)';
+          ctx.beginPath(); ctx.arc(o.x + 20, o.y + 20, 15, 0, Math.PI*2); ctx.fill();
+          if (o.active) { ctx.strokeStyle = '#fff'; ctx.stroke(); }
+        }
+        // Draw Spike
+        else if (o.type === 'spike' || o.type === 'ceilingSpike') {
+          ctx.fillStyle = '#ff4d4d';
+          ctx.beginPath();
+          if (o.type === 'spike') {
+            ctx.moveTo(o.x, o.y + o.h); ctx.lineTo(o.x + o.w, o.y + o.h); ctx.lineTo(o.x + o.w/2, o.y);
+          } else {
+            ctx.moveTo(o.x, o.y); ctx.lineTo(o.x + o.w, o.y); ctx.lineTo(o.x + o.w/2, o.y + o.h);
+          }
+          ctx.fill();
+        }
+        // Draw Block
+        else {
+          ctx.fillStyle = '#f093fb';
+          ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(o.x, o.y, o.w, o.h);
+        }
+
+        // Collision
+        const px = player.x + 5, py = player.y + 5, pw = player.width - 10, ph = player.height - 10;
+        if (px < o.x + o.w && px + pw > o.x && py < o.y + o.h && py + ph > o.y) {
+          if (o.type === 'portal') {
+            gameMode = o.to;
+            gameModeDisplay.textContent = gameMode.toUpperCase();
+            obstacles.splice(i, 1);
+          } else if (o.type === 'orb') {
+            // Do nothing on overlap, wait for click
+          } else {
+            gameRunning = false;
+            gameOverScreen.classList.add('show');
+            finalScoreDisplay.textContent = `Score: ${score}`;
+          }
+        }
+
+        // Remove offscreen
+        if (o.x < -100) {
+          obstacles.splice(i, 1);
+          score += 10;
+          scoreDisplay.textContent = `Score: ${score}`;
+          distanceDisplay.textContent = `Distance: ${Math.floor(frameCount/10)}m`;
+        }
+      }
+
+      // --- 4. DRAW PLAYER ---
+      ctx.save();
+      ctx.translate(player.x + player.width/2, player.y + player.height/2);
+      ctx.rotate(player.rotation);
+      ctx.fillStyle = '#43e97b';
+      if (gameMode === 'ship') {
+        ctx.beginPath(); ctx.ellipse(0, 0, 25, 15, 0, 0, Math.PI*2); ctx.fill();
+      } else if (gameMode === 'ball') {
+        ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.stroke();
+      } else if (gameMode === 'wave') {
+        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-15, 12); ctx.lineTo(-15, -12); ctx.closePath(); ctx.fill();
+      } else {
+        ctx.fillRect(-20, -20, 40, 40);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(-20, -20, 40, 40);
+      }
+      ctx.restore();
+
+      requestAnimationFrame(loop);
+    }
+
+    function handleInput() {
+      if (!gameRunning) return;
+
+      // Check for Orb hit first
+      let hitOrb = false;
+      for (let o of obstacles) {
+        if (o.type === 'orb' && o.active) {
+          const dx = (player.x + 20) - (o.x + 20);
+          const dy = (player.y + 20) - (o.y + 20);
+          if (Math.sqrt(dx*dx + dy*dy) < 60) {
+            player.velocityY = JUMP_FORCE;
+            o.active = false;
+            hitOrb = true;
+            player.jumping = true;
+            break;
+          }
+        }
+      }
+
+      if (hitOrb) return;
+
+      if (gameMode === 'cube' && !player.jumping) {
+        player.velocityY = JUMP_FORCE;
+        player.jumping = true;
+      } else if (gameMode === 'ball') {
+        player.ballFlipped = !player.ballFlipped;
+      } else if (gameMode === 'spider') {
+        player.spiderFlipped = !player.spiderFlipped;
+        player.velocityY = player.spiderFlipped ? -SPIDER_SPEED : SPIDER_SPEED;
+      }
+    }
+
+    // EVENT LISTENERS
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        isHoldingJump = true;
+        handleInput();
+      }
+    });
+    window.addEventListener('keyup', (e) => { if (e.code === 'Space') isHoldingJump = false; });
+    canvas.addEventListener('mousedown', () => { isHoldingJump = true; handleInput(); });
+    canvas.addEventListener('mouseup', () => isHoldingJump = false);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isHoldingJump = true; handleInput(); });
+    canvas.addEventListener('touchend', () => isHoldingJump = false);
+
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+  </script>
+ </body>
+</html>
