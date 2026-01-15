@@ -1,0 +1,1359 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rhythm Runner</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Arial Black', Arial, sans-serif;
+    }
+
+    html, body, #game-container {
+      height: 100%;
+      width: 100%;
+    }
+
+    #game-container {
+      position: relative;
+      background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1e 100%);
+      overflow: hidden;
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #menu-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #1e90ff 0%, #4169e1 100%);
+      z-index: 10;
+      overflow: hidden;
+    }
+
+    #menu-screen.hidden {
+      display: none;
+    }
+
+    .menu-background-pattern {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      opacity: 0.1;
+      background-image: 
+        repeating-linear-gradient(90deg, transparent, transparent 50px, #00ffff 50px, #00ffff 52px),
+        repeating-linear-gradient(0deg, transparent, transparent 50px, #00ffff 50px, #00ffff 52px);
+    }
+
+    .menu-floor {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 120px;
+      background: linear-gradient(180deg, #2c5aa0 0%, #1e3a5f 100%);
+      border-top: 4px solid #00ffff;
+      box-shadow: 0 -4px 20px rgba(0, 255, 255, 0.3);
+    }
+
+    .neon-shapes {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .neon-cube {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+      box-shadow: 0 0 30px #00ffff, 0 0 60px #ff00ff;
+      animation: float 6s ease-in-out infinite;
+      opacity: 0.3;
+      will-change: transform;
+    }
+
+    .neon-cube:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
+    .neon-cube:nth-child(2) { top: 60%; left: 80%; animation-delay: 2s; transform: rotate(45deg); }
+    .neon-cube:nth-child(3) { top: 30%; left: 70%; animation-delay: 4s; width: 40px; height: 40px; }
+
+    .drifting-cube {
+      position: fixed;
+      bottom: 130px;
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #00ff00 0%, #00cc00 100%);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 20px #00ff00, 0 4px 10px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+      transition: opacity 0.1s;
+      z-index: 1;
+      pointer-events: auto;
+      left: -60px;
+    }
+
+    .drifting-cube:hover {
+      filter: brightness(1.2);
+    }
+
+    .drifting-cube.animating {
+      animation: driftCube 8s linear infinite, rotateCube 2s linear infinite;
+      will-change: transform, left;
+    }
+
+    @keyframes driftCube {
+      0% { left: -60px; }
+      100% { left: 100%; }
+    }
+
+    @keyframes rotateCube {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .explosion-particle {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #00ff00;
+      border-radius: 50%;
+      pointer-events: none;
+      box-shadow: 0 0 10px #00ff00;
+    }
+
+    @keyframes explode {
+      0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(var(--tx), var(--ty)) scale(0);
+        opacity: 0;
+      }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-30px) rotate(180deg); }
+    }
+
+    #game-title {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
+      animation: titleFloat 3s ease-in-out infinite;
+      will-change: transform;
+    }
+
+    .title-line {
+      font-size: 96px;
+      color: #00ff00;
+      text-shadow: 
+        0 0 20px #00ff00,
+        0 0 40px #00cc00,
+        2px 2px 4px rgba(0, 0, 0, 0.8);
+      animation: neonPulse 2s ease-in-out infinite;
+      letter-spacing: 4px;
+      font-weight: 900;
+      margin: 0;
+      line-height: 1;
+    }
+
+    @keyframes neonPulse {
+      0%, 100% { 
+        text-shadow: 
+          0 0 20px #00ff00,
+          0 0 40px #00cc00,
+          2px 2px 4px rgba(0, 0, 0, 0.8);
+      }
+      50% { 
+        text-shadow: 
+          0 0 30px #00ff00,
+          0 0 60px #00cc00,
+          2px 2px 4px rgba(0, 0, 0, 0.8);
+      }
+    }
+
+    @keyframes titleFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+
+    .menu-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      z-index: 200;
+      margin-top: 40px;
+    }
+
+    #start-button {
+      padding: 20px 80px;
+      font-size: 36px;
+      font-weight: bold;
+      color: #ffffff;
+      background: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+      border: 3px solid #00ffff;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 
+        0 0 20px #00ffff,
+        0 8px 20px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+      will-change: transform;
+    }
+
+    #start-button::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+
+    #start-button:hover::before {
+      width: 400px;
+      height: 400px;
+    }
+
+    #start-button:hover {
+      transform: translateY(-4px) scale(1.05);
+      box-shadow: 
+        0 0 30px #00ffff,
+        0 12px 30px rgba(0, 0, 0, 0.6);
+      border-color: #ff00ff;
+    }
+
+    #start-button:active {
+      transform: translateY(-2px) scale(1.02);
+    }
+
+    .menu-subtitle {
+      color: #ff00ff;
+      font-size: 32px;
+      text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+      margin-top: 10px;
+      margin-bottom: 40px;
+      letter-spacing: 12px;
+      animation: subtitlePulse 3s ease-in-out infinite;
+      z-index: 2;
+      font-weight: 900;
+    }
+
+    @keyframes subtitlePulse {
+      0%, 100% { opacity: 0.7; }
+      50% { opacity: 1; }
+    }
+
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #ffffff;
+      font-size: 24px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+      z-index: 5;
+    }
+
+    #game-mode-display {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      color: #ffffff;
+      font-size: 28px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+      z-index: 5;
+      padding: 10px 20px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 10px;
+      border: 2px solid #00ffff;
+    }
+
+    #game-over-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 10;
+    }
+
+    #game-over-screen.show {
+      display: flex;
+    }
+
+    #game-over-title {
+      font-size: 64px;
+      color: #f5576c;
+      margin-bottom: 20px;
+    }
+
+    #final-score {
+      font-size: 36px;
+      color: #ffffff;
+      margin-bottom: 40px;
+    }
+
+    #restart-button {
+      padding: 16px 48px;
+      font-size: 28px;
+      font-weight: bold;
+      color: #ffffff;
+      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+      border: none;
+      border-radius: 40px;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s;
+    }
+
+    #restart-button:hover {
+      transform: translateY(-3px);
+    }
+
+    #instructions {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #ffffff;
+      font-size: 20px;
+      text-align: center;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+      z-index: 5;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+  <script src="https://cdn.tailwindcss.com" type="text/javascript"></script>
+ </head>
+ <body>
+  <div id="game-container">
+   <canvas id="game-canvas"></canvas>
+   <div id="menu-screen">
+    <div class="menu-background-pattern"></div>
+    <div class="neon-shapes">
+     <div class="neon-cube"></div>
+     <div class="neon-cube"></div>
+     <div class="neon-cube"></div>
+    </div>
+    <div class="menu-floor"></div>
+    <div class="drifting-cube" id="drifting-cube"></div>
+    <h1 id="game-title">
+     <div class="title-line">
+      GEOMETRY
+     </div>
+     <div class="title-line">
+      DASH
+     </div></h1>
+    <div class="menu-subtitle">
+     NEON EDITION
+    </div>
+    <div class="menu-buttons"><button id="start-button">PLAY</button>
+    </div>
+   </div>
+   <div id="hud">
+    <div id="score">
+     Score: 0
+    </div>
+    <div id="distance">
+     Distance: 0m
+    </div>
+   </div>
+   <div id="game-mode-display">
+    CUBE
+   </div>
+   <div id="instructions">
+    Press SPACE or CLICK to jump
+   </div>
+   <div id="game-over-screen">
+    <h2 id="game-over-title">Game Over!</h2>
+    <p id="final-score">Final Score: 0</p><button id="restart-button">Play Again</button>
+   </div>
+  </div>
+  <script>
+    const defaultConfig = {
+      game_title: "GEOMETRY DASH NEON",
+      start_button_text: "PLAY",
+      primary_color: "#667eea",
+      secondary_color: "#f5576c",
+      player_color: "#43e97b",
+      obstacle_color: "#f093fb",
+      background_color: "#1a1a2e",
+      font_family: "Arial Black",
+      font_size: 16
+    };
+
+    let config = { ...defaultConfig };
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const menuScreen = document.getElementById('menu-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startButton = document.getElementById('start-button');
+    const restartButton = document.getElementById('restart-button');
+    const scoreDisplay = document.getElementById('score');
+    const distanceDisplay = document.getElementById('distance');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const gameTitleElement = document.getElementById('game-title');
+    const instructionsElement = document.getElementById('instructions');
+    const driftingCube = document.getElementById('drifting-cube');
+    const gameModeDisplay = document.getElementById('game-mode-display');
+
+    let gameRunning = false;
+    let score = 0;
+    let distance = 0;
+    let gameSpeed = 6;
+    let gravity = 0.8;
+    let jumpStrength = -15;
+    let gameMode = 'cube'; // cube, ship, wave, ball
+
+    // Start the cube animation
+    driftingCube.classList.add('animating');
+
+    function explodeCube() {
+      const rect = driftingCube.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      
+      driftingCube.classList.remove('animating');
+      driftingCube.style.opacity = '0';
+      driftingCube.style.pointerEvents = 'none';
+      
+      for (let i = 0; i < 20; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'explosion-particle';
+        particle.style.position = 'fixed';
+        particle.style.left = centerX + 'px';
+        particle.style.top = centerY + 'px';
+        particle.style.zIndex = '1000';
+        
+        const angle = (Math.PI * 2 * i) / 20;
+        const velocity = 100 + Math.random() * 100;
+        const tx = Math.cos(angle) * velocity;
+        const ty = Math.sin(angle) * velocity;
+        
+        particle.style.setProperty('--tx', tx + 'px');
+        particle.style.setProperty('--ty', ty + 'px');
+        particle.style.animation = 'explode 0.8s ease-out forwards';
+        
+        document.body.appendChild(particle);
+        
+        setTimeout(() => particle.remove(), 800);
+      }
+      
+      setTimeout(() => {
+        driftingCube.style.opacity = '1';
+        driftingCube.style.pointerEvents = 'auto';
+        setTimeout(() => {
+          driftingCube.classList.add('animating');
+        }, 50);
+      }, 1000);
+    }
+    
+    driftingCube.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      explodeCube();
+    });
+    
+    driftingCube.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      explodeCube();
+    });
+
+    const player = {
+      x: 100,
+      y: 0,
+      width: 40,
+      height: 40,
+      velocityY: 0,
+      jumping: false,
+      rotation: 0,
+      waveAmplitude: 80,
+      wavePhase: 0,
+      ballGravityFlipped: false
+    };
+
+    const obstacles = [];
+    const particles = [];
+    let groundY;
+    let frameCount = 0;
+    let isHoldingJump = false;
+
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      groundY = canvas.height - 100;
+      player.y = groundY - player.height;
+    }
+
+    function startGame() {
+      menuScreen.classList.add('hidden');
+      gameOverScreen.classList.remove('show');
+      instructionsElement.style.display = 'none';
+      gameRunning = true;
+      score = 0;
+      distance = 0;
+      gameSpeed = 6;
+      obstacles.length = 0;
+      particles.length = 0;
+      player.y = groundY - player.height;
+      player.velocityY = 0;
+      player.jumping = false;
+      player.rotation = 0;
+      player.wavePhase = 0;
+      player.ballGravityFlipped = false;
+      frameCount = 0;
+      isInvincible = false;
+      gameMode = 'cube';
+      gameModeDisplay.textContent = 'CUBE';
+      if (invincibilityTimer) clearTimeout(invincibilityTimer);
+      gameLoop();
+    }
+
+    function endGame() {
+      gameRunning = false;
+      gameOverScreen.classList.add('show');
+      finalScoreDisplay.textContent = `Final Score: ${score}`;
+    }
+
+    function jump() {
+      if (gameRunning) {
+        if (player.touchingOrb && gameMode !== 'ball') {
+          const obstacle = player.touchingOrb;
+          const orbCenterX = obstacle.x + obstacle.width / 2;
+          const orbCenterY = obstacle.y + obstacle.height / 2;
+          const playerCenterX = player.x + player.width / 2;
+          const playerCenterY = player.y + player.height / 2;
+          
+          player.velocityY = jumpStrength * 1.45;
+          player.jumping = true;
+          obstacle.active = false;
+          createParticles(orbCenterX, orbCenterY, 20);
+          
+          const horizontalOffset = (playerCenterX - orbCenterX) / obstacle.radius;
+          const verticalOffset = (playerCenterY - orbCenterY) / obstacle.radius;
+          const imperfection = Math.sqrt(horizontalOffset * horizontalOffset + verticalOffset * verticalOffset);
+          
+          if (imperfection > 0.3) {
+            player.x += horizontalOffset * 2;
+          }
+          
+          isInvincible = true;
+          if (invincibilityTimer) clearTimeout(invincibilityTimer);
+          invincibilityTimer = setTimeout(() => { 
+            isInvincible = false; 
+          }, 300);
+          
+          setTimeout(() => { obstacle.active = true; }, 500);
+          player.touchingOrb = null;
+          
+        } else if (gameMode === 'cube' && !player.jumping) {
+          player.velocityY = jumpStrength;
+          player.jumping = true;
+          createParticles(player.x + player.width / 2, player.y + player.height, 8);
+        } else if (gameMode === 'ball') {
+          // Ball mode - click to flip gravity
+          player.ballGravityFlipped = !player.ballGravityFlipped;
+          createParticles(player.x + player.width / 2, player.y + player.height / 2, 12);
+        }
+      }
+    }
+
+    function createParticles(x, y, count) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: (Math.random() - 0.5) * 4,
+          vy: Math.random() * -4,
+          life: 30,
+          size: Math.random() * 4 + 2
+        });
+      }
+    }
+
+    function createObstacle() {
+      if (gameMode === 'cube') {
+        createCubeObstacle();
+      } else if (gameMode === 'ship') {
+        createShipObstacle();
+      } else if (gameMode === 'wave') {
+        createWaveObstacle();
+      } else if (gameMode === 'ball') {
+        createBallObstacle();
+      }
+    }
+
+    function createCubeObstacle() {
+      const types = ['block', 'spike', 'blockSpike', 'doubleBlockSpike'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      
+      let obstacle = {
+        x: canvas.width,
+        type: type
+      };
+
+      if (type === 'block') {
+        obstacle.width = 40;
+        obstacle.height = 40;
+        obstacle.y = groundY - obstacle.height;
+        obstacle.safe = true;
+      } else if (type === 'spike') {
+        obstacle.width = 30;
+        obstacle.height = 50;
+        obstacle.y = groundY - obstacle.height;
+        obstacle.safe = false;
+      } else if (type === 'blockSpike') {
+        obstacle.width = 40;
+        obstacle.height = 90;
+        obstacle.y = groundY - obstacle.height;
+        obstacle.safe = false;
+        obstacle.isBlockSpike = true;
+      } else if (type === 'doubleBlockSpike') {
+        obstacle.width = 40;
+        obstacle.height = 130;
+        obstacle.y = groundY - obstacle.height;
+        obstacle.safe = false;
+        obstacle.isDoubleBlockSpike = true;
+        
+        obstacles.push({
+          x: canvas.width - 100,
+          y: groundY - 160,
+          width: 30,
+          height: 30,
+          type: 'orb',
+          safe: true,
+          radius: 15,
+          active: true,
+          invincible: true
+        });
+      }
+
+      obstacles.push(obstacle);
+    }
+
+    function createShipObstacle() {
+      const types = ['ceiling', 'ceilingSpike', 'narrow'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      
+      let obstacle = {
+        x: canvas.width,
+        type: type
+      };
+
+      if (type === 'ceiling') {
+        obstacle.width = 80;
+        obstacle.height = 60;
+        obstacle.y = 0;
+        obstacle.safe = false;
+      } else if (type === 'ceilingSpike') {
+        obstacle.width = 40;
+        obstacle.height = 80;
+        obstacle.y = 0;
+        obstacle.safe = false;
+        obstacle.isCeilingSpike = true;
+      } else if (type === 'narrow') {
+        // Gap in middle
+        obstacles.push({
+          x: canvas.width,
+          y: 0,
+          width: 60,
+          height: canvas.height * 0.3,
+          type: 'ceilingBlock',
+          safe: false
+        });
+        obstacles.push({
+          x: canvas.width,
+          y: groundY - 60,
+          width: 60,
+          height: 60 + (canvas.height - groundY),
+          type: 'groundBlock',
+          safe: false
+        });
+        return;
+      }
+
+      obstacles.push(obstacle);
+    }
+
+    function createWaveObstacle() {
+      const types = ['verticalBar', 'gap', 'multiBar'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      
+      if (type === 'verticalBar') {
+        obstacles.push({
+          x: canvas.width,
+          y: canvas.height * 0.3,
+          width: 30,
+          height: canvas.height * 0.15,
+          type: 'waveBar',
+          safe: false
+        });
+      } else if (type === 'gap') {
+        obstacles.push({
+          x: canvas.width,
+          y: 0,
+          width: 40,
+          height: canvas.height * 0.35,
+          type: 'waveTop',
+          safe: false
+        });
+        obstacles.push({
+          x: canvas.width,
+          y: canvas.height * 0.65,
+          width: 40,
+          height: canvas.height * 0.35,
+          type: 'waveBottom',
+          safe: false
+        });
+      } else if (type === 'multiBar') {
+        obstacles.push({
+          x: canvas.width,
+          y: canvas.height * 0.25,
+          width: 20,
+          height: canvas.height * 0.1,
+          type: 'waveBar',
+          safe: false
+        });
+        obstacles.push({
+          x: canvas.width + 50,
+          y: canvas.height * 0.55,
+          width: 20,
+          height: canvas.height * 0.1,
+          type: 'waveBar',
+          safe: false
+        });
+      }
+    }
+
+    function createBallObstacle() {
+      const types = ['spike', 'floatingBlock', 'platform', 'platformSequence'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      
+      let obstacle = {
+        x: canvas.width,
+        type: type
+      };
+
+      if (type === 'spike') {
+        obstacle.width = 30;
+        obstacle.height = 50;
+        obstacle.y = groundY - obstacle.height;
+        obstacle.safe = false;
+      } else if (type === 'floatingBlock') {
+        obstacle.width = 60;
+        obstacle.height = 40;
+        obstacle.y = groundY - 120;
+        obstacle.safe = true;
+      } else if (type === 'platform') {
+        obstacle.width = 100;
+        obstacle.height = 20;
+        obstacle.y = groundY - 80;
+        obstacle.safe = true;
+      } else if (type === 'platformSequence') {
+        // Create a sequence of alternating platforms
+        obstacles.push({
+          x: canvas.width,
+          y: groundY - 60,
+          width: 80,
+          height: 15,
+          type: 'bouncePlatform',
+          safe: true
+        });
+        obstacles.push({
+          x: canvas.width + 90,
+          y: groundY - 140,
+          width: 80,
+          height: 15,
+          type: 'bouncePlatform',
+          safe: true
+        });
+        obstacles.push({
+          x: canvas.width + 180,
+          y: groundY - 60,
+          width: 80,
+          height: 15,
+          type: 'bouncePlatform',
+          safe: true
+        });
+        obstacles.push({
+          x: canvas.width + 270,
+          y: groundY - 140,
+          width: 80,
+          height: 15,
+          type: 'bouncePlatform',
+          safe: true
+        });
+        return;
+      }
+
+      obstacles.push(obstacle);
+    }
+
+    function createPortal() {
+      const modes = ['ship', 'wave', 'ball', 'cube'];
+      // Filter out current game mode so portals don't switch to same mode
+      const availableModes = modes.filter(mode => mode !== gameMode);
+      const newMode = availableModes[Math.floor(Math.random() * availableModes.length)];
+      
+      obstacles.push({
+        x: canvas.width,
+        y: groundY - 100,
+        width: 40,
+        height: 100,
+        type: 'portal',
+        portalMode: newMode,
+        safe: true
+      });
+    }
+
+    function updatePlayer() {
+      if (gameMode === 'cube' || gameMode === 'ball') {
+        // Apply gravity (flipped for ball mode if needed)
+        if (gameMode === 'ball' && player.ballGravityFlipped) {
+          player.velocityY -= gravity; // Upward gravity
+        } else {
+          player.velocityY += gravity; // Normal gravity
+        }
+        player.y += player.velocityY;
+
+        // Check ceiling collision for ball mode with flipped gravity
+        if (gameMode === 'ball' && player.ballGravityFlipped) {
+          if (player.y <= 20) {
+            player.y = 20;
+            player.velocityY = 0;
+            player.jumping = false;
+            player.rotation = 0;
+          }
+        }
+
+        // Check ground collision
+        if (player.y >= groundY - player.height) {
+          player.y = groundY - player.height;
+          player.velocityY = 0;
+          player.jumping = false;
+          player.rotation = 0;
+          if (gameMode === 'ball') {
+            player.ballGravityFlipped = false; // Reset to normal gravity on ground
+          }
+        }
+
+        if (player.jumping) {
+          player.rotation += gameMode === 'ball' ? 0.2 : 0.15;
+        }
+      } else if (gameMode === 'ship') {
+        // Ship mode - hold to go up, release to go down
+        if (isHoldingJump) {
+          player.velocityY = -5;
+        } else {
+          player.velocityY = 5;
+        }
+        
+        player.y += player.velocityY;
+        
+        // Clamp ship position
+        if (player.y < 20) player.y = 20;
+        if (player.y > groundY - player.height) player.y = groundY - player.height;
+        
+        // Ship rotation based on direction
+        player.rotation = player.velocityY * 0.05;
+      } else if (gameMode === 'wave') {
+        // Wave mode - smooth sine wave movement
+        if (isHoldingJump) {
+          player.wavePhase += 0.15;
+        } else {
+          player.wavePhase -= 0.15;
+        }
+        
+        const centerY = canvas.height / 2;
+        player.y = centerY + Math.sin(player.wavePhase) * player.waveAmplitude;
+        
+        // Clamp wave position
+        if (player.y < 20) {
+          player.y = 20;
+          player.wavePhase = Math.asin((20 - centerY) / player.waveAmplitude);
+        }
+        if (player.y > groundY - player.height) {
+          player.y = groundY - player.height;
+          player.wavePhase = Math.asin((groundY - player.height - centerY) / player.waveAmplitude);
+        }
+      }
+      
+      player.touchingOrb = null;
+    }
+
+    function updateObstacles() {
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        obstacles[i].x -= gameSpeed;
+
+        if (obstacles[i].x + obstacles[i].width < 0) {
+          obstacles.splice(i, 1);
+          score += 10;
+          scoreDisplay.textContent = `Score: ${score}`;
+        } else if (obstacles[i].type === 'portal' && checkCollision(player, obstacles[i])) {
+          gameMode = obstacles[i].portalMode;
+          gameModeDisplay.textContent = gameMode.toUpperCase();
+          createParticles(obstacles[i].x + obstacles[i].width / 2, obstacles[i].y + obstacles[i].height / 2, 30);
+          obstacles.splice(i, 1);
+        } else if (checkCollision(player, obstacles[i])) {
+          endGame();
+        }
+      }
+
+      // More frequent obstacles
+      if (frameCount % 60 === 0) {
+        createObstacle();
+      }
+
+      // Portals appear occasionally
+      if (frameCount % 400 === 0) {
+        createPortal();
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].x += particles[i].vx;
+        particles[i].y += particles[i].vy;
+        particles[i].vy += 0.3;
+        particles[i].life--;
+
+        if (particles[i].life <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+    }
+
+    let isInvincible = false;
+    let invincibilityTimer = null;
+
+    function checkCollision(player, obstacle) {
+      const colliding = player.x < obstacle.x + obstacle.width &&
+                        player.x + player.width > obstacle.x &&
+                        player.y < obstacle.y + obstacle.height &&
+                        player.y + player.height > obstacle.y;
+      
+      if (!colliding) return false;
+      
+      if (obstacle.type === 'orb') {
+        if (obstacle.active) {
+          const orbCenterX = obstacle.x + obstacle.width / 2;
+          const orbCenterY = obstacle.y + obstacle.height / 2;
+          const playerCenterX = player.x + player.width / 2;
+          const playerCenterY = player.y + player.height / 2;
+          const distance = Math.sqrt(
+            Math.pow(orbCenterX - playerCenterX, 2) + 
+            Math.pow(orbCenterY - playerCenterY, 2)
+          );
+          
+          if (distance < obstacle.radius + player.width / 2) {
+            player.touchingOrb = obstacle;
+          }
+        }
+        return false;
+      }
+
+      if (obstacle.type === 'portal') {
+        return true; // Trigger portal
+      }
+      
+      if (isInvincible) {
+        return false;
+      }
+      
+      if (obstacle.type === 'bouncePlatform' && gameMode === 'ball') {
+        const playerBottom = player.y + player.height;
+        const playerTop = player.y;
+        const playerPrevBottom = playerBottom - player.velocityY;
+        const playerPrevTop = playerTop - player.velocityY;
+        
+        // Landing from above
+        if (playerPrevBottom <= obstacle.y && playerBottom >= obstacle.y && player.velocityY > 0) {
+          player.y = obstacle.y - player.height;
+          player.velocityY = jumpStrength * 1.2; // Strong bounce
+          player.ballGravityFlipped = false;
+          createParticles(player.x + player.width / 2, player.y + player.height, 15);
+          return false;
+        }
+        // Landing from below (gravity flipped)
+        else if (playerPrevTop >= obstacle.y + obstacle.height && playerTop <= obstacle.y + obstacle.height && player.velocityY < 0) {
+          player.y = obstacle.y + obstacle.height;
+          player.velocityY = jumpStrength * -1.2; // Strong bounce upward
+          player.ballGravityFlipped = true;
+          createParticles(player.x + player.width / 2, player.y, 15);
+          return false;
+        }
+        
+        return true;
+      }
+      
+      if (obstacle.safe) {
+        const playerBottom = player.y + player.height;
+        const playerPrevBottom = playerBottom - player.velocityY;
+        
+        if (playerPrevBottom <= obstacle.y && playerBottom >= obstacle.y && player.velocityY > 0) {
+          player.y = obstacle.y - player.height;
+          player.velocityY = 0;
+          player.jumping = false;
+          return false;
+        }
+        
+        return true;
+      }
+      
+      return true;
+    }
+
+    function drawPlayer() {
+      ctx.save();
+      ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+      
+      if (isInvincible) {
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+        ctx.fillRect(-player.width / 2 - 6, -player.height / 2 - 6, player.width + 12, player.height + 12);
+      }
+      
+      if (gameMode === 'cube') {
+        ctx.rotate(player.rotation);
+        ctx.fillStyle = config.player_color || defaultConfig.player_color;
+        ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.fillRect(-player.width / 2, -player.height / 2, player.width / 2, player.height / 2);
+      } else if (gameMode === 'ship') {
+        ctx.fillStyle = config.player_color || defaultConfig.player_color;
+        ctx.beginPath();
+        ctx.arc(0, 0, player.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Trail effect
+        for (let i = 1; i <= 3; i++) {
+          ctx.fillStyle = `rgba(67, 233, 123, ${0.3 / i})`;
+          ctx.beginPath();
+          ctx.arc(-i * 10, 0, player.width / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (gameMode === 'wave') {
+        ctx.rotate(player.rotation);
+        ctx.fillStyle = config.player_color || defaultConfig.player_color;
+        ctx.beginPath();
+        ctx.moveTo(player.width / 2, 0);
+        ctx.lineTo(-player.width / 2, player.height / 2);
+        ctx.lineTo(-player.width / 4, 0);
+        ctx.lineTo(-player.width / 2, -player.height / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(player.width / 2, 0);
+        ctx.lineTo(-player.width / 4, -player.height / 4);
+        ctx.lineTo(-player.width / 4, player.height / 4);
+        ctx.closePath();
+        ctx.fill();
+      } else if (gameMode === 'ball') {
+        ctx.rotate(player.rotation);
+        ctx.fillStyle = config.player_color || defaultConfig.player_color;
+        ctx.beginPath();
+        ctx.arc(0, 0, player.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(-5, -5, player.width / 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+
+    function drawObstacles() {
+      obstacles.forEach(obstacle => {
+        if (obstacle.type === 'spike' || obstacle.type === 'ceilingSpike') {
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.beginPath();
+          if (obstacle.type === 'ceilingSpike') {
+            ctx.moveTo(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height);
+            ctx.lineTo(obstacle.x + obstacle.width, obstacle.y);
+            ctx.lineTo(obstacle.x, obstacle.y);
+          } else {
+            ctx.moveTo(obstacle.x + obstacle.width / 2, obstacle.y);
+            ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+            ctx.lineTo(obstacle.x, obstacle.y + obstacle.height);
+          }
+          ctx.closePath();
+          ctx.fill();
+        } else if (obstacle.type === 'orb') {
+          const centerX = obstacle.x + obstacle.width / 2;
+          const centerY = obstacle.y + obstacle.height / 2;
+          
+          if (obstacle.active) {
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, obstacle.radius * 2);
+            gradient.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, obstacle.radius * 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, obstacle.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(centerX - 5, centerY - 5, obstacle.radius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, obstacle.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else if (obstacle.type === 'portal') {
+          // Draw portal
+          const gradient = ctx.createLinearGradient(obstacle.x, obstacle.y, obstacle.x + obstacle.width, obstacle.y);
+          gradient.addColorStop(0, 'rgba(0, 255, 255, 0.3)');
+          gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.8)');
+          gradient.addColorStop(1, 'rgba(0, 255, 255, 0.3)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+          
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 20px Arial';
+          ctx.textAlign = 'center';
+          ctx.save();
+          ctx.translate(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillText(obstacle.portalMode.toUpperCase(), 0, 7);
+          ctx.restore();
+        } else if (obstacle.isDoubleBlockSpike) {
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.fillRect(obstacle.x, obstacle.y + 90, obstacle.width, 40);
+          ctx.fillRect(obstacle.x, obstacle.y + 50, obstacle.width, 40);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillRect(obstacle.x, obstacle.y + 90, obstacle.width / 2, 20);
+          ctx.fillRect(obstacle.x, obstacle.y + 50, obstacle.width / 2, 20);
+          
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.beginPath();
+          ctx.moveTo(obstacle.x + obstacle.width / 2, obstacle.y);
+          ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + 50);
+          ctx.lineTo(obstacle.x, obstacle.y + 50);
+          ctx.closePath();
+          ctx.fill();
+        } else if (obstacle.isBlockSpike) {
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.fillRect(obstacle.x, obstacle.y + 50, obstacle.width, 40);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillRect(obstacle.x, obstacle.y + 50, obstacle.width / 2, 20);
+          
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.beginPath();
+          ctx.moveTo(obstacle.x + obstacle.width / 2, obstacle.y);
+          ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + 50);
+          ctx.lineTo(obstacle.x, obstacle.y + 50);
+          ctx.closePath();
+          ctx.fill();
+        } else if (obstacle.type === 'bouncePlatform') {
+          // Special bouncy platform styling
+          ctx.fillStyle = '#FFD700';
+          ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+          
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.fillRect(obstacle.x + 5, obstacle.y + 2, obstacle.width - 10, obstacle.height / 2);
+          
+          // Bounce indicator stripes
+          ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+          for (let i = 0; i < obstacle.width; i += 15) {
+            ctx.fillRect(obstacle.x + i, obstacle.y, 8, obstacle.height);
+          }
+        } else {
+          ctx.fillStyle = config.obstacle_color || defaultConfig.obstacle_color;
+          ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+          
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillRect(obstacle.x, obstacle.y, obstacle.width / 2, obstacle.height / 2);
+        }
+      });
+    }
+
+    function drawParticles() {
+      particles.forEach(particle => {
+        ctx.fillStyle = `rgba(67, 233, 123, ${particle.life / 30})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawGround() {
+      ctx.fillStyle = config.secondary_color || defaultConfig.secondary_color;
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      for (let i = 0; i < canvas.width; i += 60) {
+        ctx.fillRect(i - (frameCount * gameSpeed) % 60, groundY, 40, canvas.height - groundY);
+      }
+    }
+
+    function drawBackground() {
+      const bgColor = config.background_color || defaultConfig.background_color;
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      for (let i = 0; i < 5; i++) {
+        const x = (frameCount * (i + 1) * 0.5) % canvas.width;
+        ctx.fillRect(x, 50 + i * 80, 100, 40);
+      }
+    }
+
+    function gameLoop() {
+      if (!gameRunning) return;
+
+      frameCount++;
+      distance = Math.floor(frameCount / 10);
+      distanceDisplay.textContent = `Distance: ${distance}m`;
+
+      if (frameCount % 300 === 0) {
+        gameSpeed += 0.5;
+      }
+
+      updatePlayer();
+      updateObstacles();
+      updateParticles();
+
+      drawBackground();
+      drawGround();
+      drawObstacles();
+      drawPlayer();
+      drawParticles();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!isHoldingJump) {
+          isHoldingJump = true;
+          jump();
+        }
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        isHoldingJump = false;
+      }
+    });
+
+    canvas.addEventListener('mousedown', () => {
+      isHoldingJump = true;
+      jump();
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isHoldingJump = false;
+    });
+
+    canvas.addEventListener('touchstart', () => {
+      isHoldingJump = true;
+      jump();
+    });
+
+    canvas.addEventListener('touchend', () => {
+      isHoldingJump = false;
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    async function onConfigChange(newConfig) {
+      config = { ...config, ...newConfig };
+      
+      const titleLines = gameTitleElement.querySelectorAll('.title-line');
+      const titleText = config.game_title || defaultConfig.game_title;
+      const words = titleText.split(' ');
+      if (titleLines[0]) titleLines[0].textContent = words[0] || 'GEOMETRY';
+      if (titleLines[1]) titleLines[1].textContent = words[1] || 'DASH';
+      
+      startButton.textContent = config.start_button_text || defaultConfig.start_button_text;
+      
+      const fontFamily = config.font_family || defaultConfig.font_family;
+      const fontSize = config.font_size || defaultConfig.font_size;
+      document.body.style.fontFamily = `${fontFamily}, Arial, sans-serif`;
+      
+      if (titleLines[0]) titleLines[0].style.fontSize = `${fontSize * 6}px`;
+      if (titleLines[1]) titleLines[1].style.fontSize = `${fontSize * 6}px`;
+      startButton.style.fontSize = `${fontSize * 2.25}px`;
+    }
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange,
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            { get: () => config.background_color || defaultConfig.background_color, set: (v) => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+            { get: () => config.secondary_color || defaultConfig.secondary_color, set: (v) => { config.secondary_color = v; window.elementSdk.setConfig({ secondary_color: v }); } },
+            { get: () => config.primary_color || defaultConfig.primary_color, set: (v) => { config.primary_color = v; window.elementSdk.setConfig({ primary_color: v }); } },
+            { get: () => config.player_color || defaultConfig.player_color, set: (v) => { config.player_color = v; window.elementSdk.setConfig({ player_color: v }); } },
+            { get: () => config.obstacle_color || defaultConfig.obstacle_color, set: (v) => { config.obstacle_color = v; window.elementSdk.setConfig({ obstacle_color: v }); } }
+          ],
+          borderables: [],
+          fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: (v) => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+          fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: (v) => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } }
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ["game_title", config.game_title || defaultConfig.game_title],
+          ["start_button_text", config.start_button_text || defaultConfig.start_button_text]
+        ])
+      });
+    }
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9be20d4a818e5607',t:'MTc2ODQ0NTI4My4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
