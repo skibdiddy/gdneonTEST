@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geometry Dash Neon BETA</title>
+  <style>
+    body {
+      box-sizing: border-box; margin: 0; padding: 0; overflow: hidden;
+      font-family: 'Arial Black', Arial, sans-serif;
+    }
+    html, body, #game-container { height: 100%; width: 100%; }
+    #game-container {
+      position: relative;
+      background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1e 100%);
+      overflow: hidden;
+    }
+    #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+
+    #menu-screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #1e90ff 0%, #4169e1 100%);
+      z-index: 10; overflow: hidden;
+    }
+    #menu-screen.hidden { display: none; }
+    .menu-background-pattern {
+      position: absolute; width: 100%; height: 100%; opacity: 0.1;
+      background-image: 
+        repeating-linear-gradient(90deg, transparent, transparent 50px, #00ffff 50px, #00ffff 52px),
+        repeating-linear-gradient(0deg, transparent, transparent 50px, #00ffff 50px, #00ffff 52px);
+    }
+    .menu-floor {
+      position: absolute; bottom: 0; left: 0; width: 100%; height: 120px;
+      background: linear-gradient(180deg, #2c5aa0 0%, #1e3a5f 100%);
+      border-top: 4px solid #00ffff; box-shadow: 0 -4px 20px rgba(0, 255, 255, 0.3);
+    }
+    .drifting-cube {
+      position: absolute; bottom: 130px; width: 50px; height: 50px;
+      background: linear-gradient(135deg, #00ff00 0%, #00cc00 100%);
+      border: 2px solid #ffffff; box-shadow: 0 0 20px #00ff00, 0 4px 10px rgba(0, 0, 0, 0.5);
+      cursor: pointer; transition: opacity 0.1s; z-index: 5; left: -60px;
+    }
+    .drifting-cube.animating { animation: driftCube 8s linear infinite, rotateCube 2s linear infinite; }
+    @keyframes driftCube { 0% { left: -60px; } 100% { left: 100%; } }
+    @keyframes rotateCube { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .explosion-particle {
+      position: absolute; width: 10px; height: 10px; background: #00ff00;
+      border-radius: 2px; pointer-events: none; box-shadow: 0 0 10px #00ff00; z-index: 1000;
+    }
+    @keyframes explode {
+      0% { transform: translate(0, 0) rotate(0deg) scale(1.5); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) rotate(360deg) scale(0); opacity: 0; }
+    }
+
+    #game-title { 
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0; z-index: 2; animation: titleFloat 3s ease-in-out infinite; 
+    }
+    .title-line { 
+      font-size: 96px; color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #00cc00; 
+      font-weight: 900; line-height: 1; text-align: center; width: 100%;
+    }
+    @keyframes titleFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+
+    .menu-buttons { z-index: 200; margin-top: 40px; pointer-events: auto; }
+    #start-button {
+      padding: 20px 80px; font-size: 36px; font-weight: bold; color: #fff;
+      background: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+      border: 3px solid #00ffff; border-radius: 10px; cursor: pointer;
+      box-shadow: 0 0 20px #00ffff; transition: all 0.3s;
+    }
+
+    #hud { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 24px; z-index: 5; }
+    #game-mode-display { position: absolute; top: 20px; right: 20px; color: #fff; font-size: 24px; font-weight: bold; padding: 10px 20px; background: rgba(0, 0, 0, 0.5); border-radius: 10px; border: 2px solid #00ffff; }
+    
+    #game-over-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.85); z-index: 100; }
+    #game-over-screen.show { display: flex; }
+    #restart-button { padding: 16px 48px; font-size: 28px; color: #fff; background: #43e97b; border: none; border-radius: 40px; cursor: pointer; }
+  </style>
+ </head>
+ <body>
+  <div id="game-container">
+   <canvas id="game-canvas"></canvas>
+   
+   <div id="menu-screen">
+    <div class="menu-background-pattern"></div>
+    <div class="menu-floor"></div>
+    <div class="drifting-cube" id="drifting-cube"></div>
+    <div id="game-title">
+     <div class="title-line">GEOMETRY</div>
+     <div class="title-line">DASH</div>
+    </div>
+    <div style="color: #ff00ff; font-size: 32px; letter-spacing: 12px; font-weight: 900; margin-top: 10px; margin-bottom: 40px; z-index: 2;">NEON EDITION</div>
+    <div class="menu-buttons"><button id="start-button">PLAY</button></div>
+   </div>
+
+   <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="distance">Distance: 0m</div>
+   </div>
+   <div id="game-mode-display">CUBE</div>
+   
+   <div id="game-over-screen">
+    <h2 style="font-size: 64px; color: #f5576c; margin-bottom: 20px;">Game Over!</h2>
+    <p id="final-score" style="color:white; font-size: 24px; margin-bottom: 30px;">Final Score: 0</p>
+    <div style="color: #aaa; margin-bottom: 20px;">Press SPACE to Respawn</div>
+    <button id="restart-button">Play Again</button>
+   </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const menuScreen = document.getElementById('menu-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startButton = document.getElementById('start-button');
+    const restartButton = document.getElementById('restart-button');
+    const scoreDisplay = document.getElementById('score');
+    const distanceDisplay = document.getElementById('distance');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const driftingCube = document.getElementById('drifting-cube');
+    const gameModeDisplay = document.getElementById('game-mode-display');
+
+    const GAME_SPEED = 9; 
+    const GRAVITY = 0.8;
+    const JUMP_FORCE = -15;
+
+    let gameRunning = false;
+    let score = 0;
+    let gameMode = 'cube';
+    let groundY;
+    let frameCount = 0;
+    let isHoldingJump = false;
+    let inputLock = false; 
+    let isTransitioning = false; // Flag to stop obstacle spawning during portals
+    let animationFrameId;
+
+    const obstacles = [];
+    const player = {
+      x: 150, y: 0, width: 40, height: 40,
+      velocityY: 0, rotation: 0, jumping: false,
+      ballFlipped: false, spiderFlipped: false, onSurface: false,
+      trail: []
+    };
+
+    // Main Menu Drift Cube Logic
+    driftingCube.classList.add('animating');
+    driftingCube.addEventListener('click', () => {
+      if (!driftingCube.classList.contains('animating')) return;
+      const rect = driftingCube.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      driftingCube.classList.remove('animating');
+      driftingCube.style.opacity = '0';
+      for (let i = 0; i < 20; i++) {
+        const p = document.createElement('div');
+        p.className = 'explosion-particle';
+        p.style.left = centerX + 'px'; p.style.top = centerY + 'px';
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 60 + Math.random() * 80;
+        p.style.setProperty('--tx', Math.cos(angle) * dist + 'px');
+        p.style.setProperty('--ty', Math.sin(angle) * dist + 'px');
+        p.style.animation = `explode 0.7s cubic-bezier(0.165, 0.84, 0.44, 1) forwards`;
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 700);
+      }
+      setTimeout(() => { driftingCube.style.opacity = '1'; driftingCube.classList.add('animating'); }, 3000);
+    });
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      groundY = canvas.height - 100;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function startGame() {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      menuScreen.classList.add('hidden');
+      gameOverScreen.classList.remove('show');
+      gameRunning = true;
+      score = 0; frameCount = 0; gameMode = 'cube';
+      gameModeDisplay.textContent = 'CUBE';
+      obstacles.length = 0;
+      isTransitioning = false;
+      player.y = groundY - player.height;
+      player.velocityY = 0; player.rotation = 0; player.trail = [];
+      player.ballFlipped = false; player.spiderFlipped = false;
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function spawnObstacle() {
+      if (isTransitioning) return; // Prevent spawning obstacles when a portal is active
+
+      const x = canvas.width + 100;
+      const rand = Math.random();
+
+      if (gameMode === 'cube') {
+        if (rand < 0.25) { // Normal 1-spike
+           obstacles.push({ x, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+        } else if (rand < 0.4) { // Normal 2-spike
+           obstacles.push({ x, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+           obstacles.push({ x: x + 40, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+        } else if (rand < 0.6) { // Orb + Stacked Tower
+          obstacles.push({ x: x - 60, y: groundY - 140, w: 35, h: 35, type: 'orb' });
+          obstacles.push({ x, y: groundY - 40, w: 40, h: 40, type: 'block' });
+          obstacles.push({ x, y: groundY - 80, w: 40, h: 40, type: 'block' });
+          obstacles.push({ x, y: groundY - 120, w: 40, h: 40, type: 'spike' });
+        } else {
+          obstacles.push({ x, y: groundY - 40, w: 40, h: 40, type: 'block' });
+        }
+      } else if (gameMode === 'spider') {
+        if (rand < 0.5) {
+            obstacles.push({ x, y: groundY - 20, w: 250, h: 20, type: 'spike' });
+            obstacles.push({ x, y: 0, w: 250, h: 20, type: 'spike', flipped: true });
+        } else {
+            obstacles.push({ x, y: groundY - 80, w: 40, h: 80, type: 'block' });
+        }
+      } else if (gameMode === 'ball') {
+        if (rand < 0.5) { // Ball Special: Dual-sided Spikes
+          obstacles.push({ x, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+          obstacles.push({ x: x + 150, y: 0, w: 30, h: 50, type: 'spike', flipped: true });
+        } else { // Ceiling/Floor Pillars
+          obstacles.push({ x, y: groundY - 100, w: 40, h: 100, type: 'block' });
+          obstacles.push({ x: x + 120, y: 0, w: 40, h: 100, type: 'block' });
+        }
+      } else if (gameMode === 'wave') {
+        const gap = 240; const h = 100 + Math.random() * 200;
+        obstacles.push({ x, y: 0, w: 40, h: h, type: 'block' });
+        obstacles.push({ x, y: h + gap, w: 40, h: groundY - (h + gap), type: 'block' });
+      } else if (gameMode === 'ship') {
+        const gapY = 200 + Math.random() * (groundY - 400);
+        obstacles.push({ x, y: 0, w: 50, h: gapY, type: 'block' });
+        obstacles.push({ x, y: gapY + 220, w: 50, h: groundY - (gapY + 220), type: 'block' });
+      }
+    }
+
+    function spawnPortal() {
+      if (isTransitioning) return;
+      isTransitioning = true;
+      const modes = ['ship', 'ball', 'cube', 'spider', 'wave'];
+      const next = modes.filter(m => m !== gameMode)[Math.floor(Math.random() * 4)];
+      obstacles.push({ x: canvas.width + 100, y: 0, w: 100, h: groundY, type: 'portal', to: next });
+    }
+
+    function loop() {
+      if (!gameRunning) return;
+      frameCount++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Background & Ground
+      ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#2c5aa0'; ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+      ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 4; ctx.strokeRect(-2, groundY, canvas.width+4, 2);
+
+      // Trail
+      if (gameMode === 'ship' || gameMode === 'wave') {
+          player.trail.push({ x: player.x + 20, y: player.y + 20 });
+          if (player.trail.length > 25) player.trail.shift();
+          ctx.beginPath(); ctx.strokeStyle = 'rgba(67, 233, 123, 0.7)'; ctx.lineWidth = (gameMode==='wave'?6:3);
+          for(let i=0; i<player.trail.length; i++) {
+              player.trail[i].x -= GAME_SPEED;
+              if(i===0) ctx.moveTo(player.trail[i].x, player.trail[i].y);
+              else ctx.lineTo(player.trail[i].x, player.trail[i].y);
+          }
+          ctx.stroke();
+      }
+
+      // Physics
+      let wasOnSurface = player.onSurface; player.onSurface = false;
+      if (gameMode === 'cube') {
+        player.velocityY += GRAVITY; player.y += player.velocityY;
+        if (player.y >= groundY - player.height) { player.y = groundY - player.height; player.velocityY = 0; player.jumping = false; player.onSurface = true; player.rotation = Math.round(player.rotation / (Math.PI/2)) * (Math.PI/2); }
+        else { player.rotation += 0.15; }
+      } else if (gameMode === 'ball') {
+        player.velocityY = player.ballFlipped ? -16.5 : 16.5; player.y += player.velocityY;
+        if (player.y >= groundY - player.height || player.y <= 0) { player.y = player.y <= 0 ? 0 : groundY - player.height; player.onSurface = true; }
+        player.rotation += 0.45;
+      } else if (gameMode === 'spider') {
+        player.y = player.spiderFlipped ? 0 : groundY - player.height; player.onSurface = true;
+      } else if (gameMode === 'wave') {
+        player.velocityY = isHoldingJump ? -9 : 9; player.y += player.velocityY;
+        player.rotation = isHoldingJump ? -Math.PI/4 : Math.PI/4;
+        if (player.y < 0 || player.y > groundY - player.height) gameOver();
+      } else if (gameMode === 'ship') {
+        player.velocityY += isHoldingJump ? -1.2 : 0.9; player.velocityY = Math.max(-11, Math.min(11, player.velocityY));
+        player.y += player.velocityY; player.rotation = player.velocityY * 0.1;
+        if (player.y > groundY - player.height || player.y < 0) player.y = player.y < 0 ? 0 : groundY - player.height;
+      }
+
+      if (player.onSurface && !wasOnSurface) inputLock = false;
+
+      // Obstacle Spawning with safe zone
+      if (frameCount % 75 === 0) spawnObstacle();
+      if (frameCount % 700 === 0) spawnPortal();
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i]; o.x -= GAME_SPEED;
+        
+        if (o.type === 'portal') {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.fillRect(o.x, 0, o.w, groundY);
+          ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 4; ctx.strokeRect(o.x, 0, o.w, groundY);
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'center';
+          ctx.fillText(o.to.toUpperCase(), o.x + o.w/2, groundY / 2);
+        } else if (o.type === 'orb') {
+          ctx.fillStyle = '#ffff00'; ctx.beginPath(); ctx.arc(o.x+o.w/2, o.y+o.h/2, o.w/2, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.stroke();
+        } else if (o.type === 'spike') {
+          ctx.fillStyle = '#ff4d4d'; ctx.beginPath();
+          if (o.flipped) { ctx.moveTo(o.x, 0); ctx.lineTo(o.x+o.w, 0); ctx.lineTo(o.x+o.w/2, o.h); }
+          else { ctx.moveTo(o.x, o.y+o.h); ctx.lineTo(o.x+o.w, o.y+o.h); ctx.lineTo(o.x+o.w/2, o.y); }
+          ctx.fill();
+        } else { ctx.fillStyle = '#f093fb'; ctx.fillRect(o.x, o.y, o.w, o.h); }
+
+        // Collision Check
+        if (player.x < o.x + o.w && player.x + player.width > o.x && player.y < o.y + o.h && player.y + player.height > o.y) {
+          if (o.type === 'portal') { 
+            gameMode = o.to; gameModeDisplay.textContent = gameMode.toUpperCase(); 
+            obstacles.splice(i, 1); 
+            isTransitioning = false; // Safe zone over
+            player.trail = [];
+          } else if (o.type === 'orb') { 
+            if (isHoldingJump && !inputLock) { player.velocityY = JUMP_FORCE; inputLock = true; } 
+          } else if (o.type === 'block') {
+            if (gameMode !== 'wave' && player.velocityY >= 0 && player.y + player.height < o.y + 25) { 
+                player.y = o.y - player.height; player.velocityY = 0; player.onSurface = true; 
+            } else gameOver();
+          } else gameOver();
+        }
+        if (o.x < -200) { obstacles.splice(i, 1); score += 5; }
+      }
+
+      // Draw Player Icon
+      ctx.save(); ctx.translate(player.x + 20, player.y + 20); ctx.rotate(player.rotation);
+      if (gameMode === 'spider' && player.spiderFlipped) ctx.scale(1, -1);
+      ctx.fillStyle = '#43e97b'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+      if (gameMode === 'wave') { ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-15, -15); ctx.lineTo(-15, 15); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      else if (gameMode === 'ship') { ctx.beginPath(); ctx.ellipse(0, 0, 25, 15, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
+      else if (gameMode === 'ball') { ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-20,0); ctx.lineTo(20,0); ctx.stroke(); }
+      else { ctx.fillRect(-20, -20, 40, 40); ctx.strokeRect(-20, -20, 40, 40); }
+      ctx.restore();
+
+      scoreDisplay.textContent = `Score: ${score}`;
+      distanceDisplay.textContent = `Distance: ${Math.floor(frameCount/10)}m`;
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function gameOver() { gameRunning = false; gameOverScreen.classList.add('show'); finalScoreDisplay.textContent = `Final Score: ${score}`; }
+
+    const setInput = (s) => {
+      if (s && !gameRunning && gameOverScreen.classList.contains('show')) startGame();
+      if (s && !isHoldingJump) {
+        inputLock = false;
+        if (gameMode === 'ball' && player.onSurface) player.ballFlipped = !player.ballFlipped;
+        else if (gameMode === 'spider' && player.onSurface) player.spiderFlipped = !player.spiderFlipped;
+        else if (gameMode === 'cube' && player.onSurface) { player.velocityY = JUMP_FORCE; player.jumping = true; }
+        if (gameMode === 'ball' || gameMode === 'spider') inputLock = true;
+      }
+      isHoldingJump = s;
+    };
+
+    window.addEventListener('keydown', (e) => (e.code==='Space'||e.code==='ArrowUp') && setInput(true));
+    window.addEventListener('keyup', (e) => (e.code==='Space'||e.code==='ArrowUp') && setInput(false));
+    canvas.addEventListener('mousedown', () => setInput(true));
+    canvas.addEventListener('mouseup', () => setInput(false));
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+  </script>
+ </body>
+</html>
