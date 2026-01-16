@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geometry Dash Neon - Wave Update</title>
+  <style>
+    body { box-sizing: border-box; margin: 0; padding: 0; overflow: hidden; font-family: 'Arial Black', Arial, sans-serif; background: #000; }
+    html, body, #game-container { height: 100%; width: 100%; }
+    #game-container { position: relative; background: #0f0f1e; overflow: hidden; }
+    #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    #menu-screen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #1e90ff 0%, #4169e1 100%);
+      z-index: 10;
+    }
+    #menu-screen.hidden { display: none; }
+    #hud { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 24px; z-index: 5; text-shadow: 2px 2px #000; }
+    #game-mode-display { position: absolute; top: 20px; right: 20px; color: #fff; font-size: 24px; font-weight: bold; padding: 10px 20px; background: rgba(0, 0, 0, 0.6); border-radius: 10px; border: 2px solid #00ffff; }
+    #game-over-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.85); z-index: 100; }
+    #game-over-screen.show { display: flex; }
+    #start-button, #restart-button {
+      padding: 20px 60px; font-size: 32px; font-weight: bold; color: #fff;
+      background: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+      border: 3px solid #fff; border-radius: 15px; cursor: pointer;
+      box-shadow: 0 0 20px #00ffff; transition: 0.2s;
+    }
+    #start-button:hover, #restart-button:hover { transform: scale(1.1); }
+  </style>
+ </head>
+ <body>
+  <div id="game-container">
+   <canvas id="game-canvas"></canvas>
+   
+   <div id="menu-screen">
+    <h1 style="font-size: 80px; color: #00ff00; text-shadow: 0 0 20px #00ff00; margin: 0;">GEOMETRY NEON</h1>
+    <p style="color: #ff00ff; letter-spacing: 5px; font-weight: bold; margin-bottom: 40px;">WAVE & TRAILS EDITION</p>
+    <button id="start-button">PLAY</button>
+   </div>
+
+   <div id="hud">
+    <div id="score">Score: 0</div>
+    <div id="distance">Distance: 0m</div>
+   </div>
+   <div id="game-mode-display">CUBE</div>
+   
+   <div id="game-over-screen">
+    <h2 style="font-size: 64px; color: #f5576c; margin-bottom: 10px;">CRASHED!</h2>
+    <p id="final-score" style="color:white; font-size: 24px; margin-bottom: 30px;">Final Score: 0</p>
+    <button id="restart-button">RETRY</button>
+   </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const menuScreen = document.getElementById('menu-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startButton = document.getElementById('start-button');
+    const restartButton = document.getElementById('restart-button');
+    const scoreDisplay = document.getElementById('score');
+    const distanceDisplay = document.getElementById('distance');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const gameModeDisplay = document.getElementById('game-mode-display');
+
+    const GAME_SPEED = 9; 
+    const GRAVITY = 0.8;
+    const JUMP_FORCE = -15;
+
+    let gameRunning = false;
+    let score = 0;
+    let gameMode = 'cube';
+    let groundY;
+    let frameCount = 0;
+    let isHoldingJump = false;
+    let animationFrameId;
+
+    const obstacles = [];
+    const player = {
+      x: 180, y: 0, width: 36, height: 36,
+      velocityY: 0, rotation: 0, jumping: false,
+      ballFlipped: false, spiderFlipped: false,
+      trail: [] // Stores previous positions for the trail
+    };
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      groundY = canvas.height - 120;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function startGame() {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      menuScreen.classList.add('hidden');
+      gameOverScreen.classList.remove('show');
+      gameRunning = true;
+      score = 0; frameCount = 0; gameMode = 'cube';
+      gameModeDisplay.textContent = 'CUBE';
+      obstacles.length = 0;
+      player.y = groundY - player.height;
+      player.velocityY = 0; player.rotation = 0; player.trail = [];
+      player.ballFlipped = false; player.spiderFlipped = false;
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function spawnObstacle() {
+      const x = canvas.width + 100;
+      const rand = Math.random();
+
+      if (gameMode === 'wave') {
+        // Wave specific tunnel obstacles
+        const gapHeight = 220;
+        const centerY = 150 + Math.random() * (groundY - 300);
+        obstacles.push({ x, y: 0, w: 60, h: centerY - gapHeight/2, type: 'block' });
+        obstacles.push({ x, y: centerY + gapHeight/2, w: 60, h: groundY, type: 'block' });
+      } else if (gameMode === 'cube') {
+        if (rand < 0.5) obstacles.push({ x, y: groundY - 40, w: 40, h: 40, type: 'block' });
+        else obstacles.push({ x, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+      } else if (gameMode === 'ship') {
+        const h = 100 + Math.random() * 200;
+        obstacles.push({ x, y: rand > 0.5 ? 0 : groundY - h, w: 50, h: h, type: 'block' });
+      } else {
+        obstacles.push({ x, y: groundY - 50, w: 30, h: 50, type: 'spike' });
+      }
+    }
+
+    function spawnPortal() {
+      const modes = ['ship', 'ball', 'cube', 'spider', 'wave'];
+      const available = modes.filter(m => m !== gameMode);
+      const next = available[Math.floor(Math.random() * available.length)];
+      obstacles.push({ x: canvas.width + 100, y: 0, w: 80, h: groundY, type: 'portal', to: next });
+    }
+
+    function drawIcon(ctx, x, y, size, type) {
+      ctx.save(); ctx.translate(x, y); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+      if (type === 'wave') {
+        ctx.beginPath(); ctx.moveTo(size/2, 0); ctx.lineTo(-size/2, -size/2); ctx.lineTo(-size/2, size/2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      } else if (type === 'ship') {
+        ctx.beginPath(); ctx.ellipse(0, 0, size/1.2, size/2.5, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      } else if (type === 'cube') {
+        ctx.fillRect(-size/2, -size/2, size, size); ctx.strokeRect(-size/2, -size/2, size, size);
+      }
+      ctx.restore();
+    }
+
+    function loop() {
+      if (!gameRunning) return;
+      frameCount++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Background & Floor
+      ctx.fillStyle = '#0f0f1e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#1e3a5f'; ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+      ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 4; ctx.strokeRect(-5, groundY, canvas.width + 10, 5);
+
+      // Handle Trail
+      player.trail.push({ x: player.x + player.width/2, y: player.y + player.height/2 });
+      if (player.trail.length > 20) player.trail.shift();
+
+      // Draw Trail
+      if (player.trail.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#43e97b';
+        ctx.lineWidth = (gameMode === 'wave') ? 6 : 3;
+        ctx.lineJoin = 'round';
+        ctx.moveTo(player.trail[0].x, player.trail[0].y);
+        for(let i = 1; i < player.trail.length; i++) {
+            // Shift trail with game speed
+            player.trail[i-1].x -= GAME_SPEED;
+            ctx.lineTo(player.trail[i].x, player.trail[i].y);
+        }
+        ctx.stroke();
+      }
+
+      // PHYSICS
+      if (gameMode === 'wave') {
+        const waveSpeed = 8;
+        player.velocityY = isHoldingJump ? -waveSpeed : waveSpeed;
+        player.y += player.velocityY;
+        player.rotation = isHoldingJump ? -Math.PI/4 : Math.PI/4;
+        if (player.y < 0 || player.y > groundY - player.height) gameOver();
+      } 
+      else if (gameMode === 'ship') {
+        player.velocityY += isHoldingJump ? -1.3 : 1.0;
+        player.velocityY = Math.max(-12, Math.min(12, player.velocityY));
+        player.y += player.velocityY;
+        player.rotation = player.velocityY * 0.08;
+      } 
+      else if (gameMode === 'spider') {
+        player.y = player.spiderFlipped ? 0 : groundY - player.height;
+      }
+      else if (gameMode === 'ball') {
+        player.velocityY = player.ballFlipped ? -16 : 16;
+        player.y += player.velocityY;
+        player.rotation += 0.4;
+      }
+      else { // Cube
+        player.velocityY += GRAVITY;
+        player.y += player.velocityY;
+        if (player.y >= groundY - player.height) {
+          player.y = groundY - player.height; player.velocityY = 0; player.jumping = false;
+          player.rotation = Math.round(player.rotation / (Math.PI/2)) * (Math.PI/2);
+        } else { player.rotation += 0.15; }
+      }
+
+      // Boundaries
+      if (player.y < 0 && gameMode !== 'wave') player.y = 0;
+      if (player.y > groundY - player.height && gameMode !== 'wave') player.y = groundY - player.height;
+
+      // Obstacles logic
+      if (frameCount % 70 === 0) spawnObstacle();
+      if (frameCount % 600 === 0) spawnPortal();
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        o.x -= GAME_SPEED;
+
+        if (o.type === 'portal') {
+          ctx.fillStyle = 'rgba(255, 0, 255, 0.2)'; ctx.fillRect(o.x, 0, o.w, groundY);
+          ctx.strokeStyle = '#ff00ff'; ctx.strokeRect(o.x, 0, o.w, groundY);
+          drawIcon(ctx, o.x + o.w/2, groundY/2, 30, o.to);
+        } else if (o.type === 'spike') {
+          ctx.fillStyle = '#ff4d4d'; ctx.beginPath();
+          ctx.moveTo(o.x, o.y + o.h); ctx.lineTo(o.x + o.w, o.y + o.h); ctx.lineTo(o.x + o.w/2, o.y); ctx.fill();
+        } else {
+          ctx.fillStyle = '#f093fb'; ctx.fillRect(o.x, o.y, o.w, o.h);
+          ctx.strokeStyle = '#fff'; ctx.strokeRect(o.x, o.y, o.w, o.h);
+        }
+
+        // Collision
+        if (player.x < o.x + o.w && player.x + player.width > o.x && player.y < o.y + o.h && player.y + player.height > o.y) {
+          if (o.type === 'portal') {
+            gameMode = o.to; gameModeDisplay.textContent = gameMode.toUpperCase();
+            obstacles.splice(i, 1);
+          } else gameOver();
+        }
+        if (o.x < -100) { obstacles.splice(i, 1); score += 10; }
+      }
+
+      // Draw Player Icon
+      ctx.save();
+      ctx.translate(player.x + player.width/2, player.y + player.height/2);
+      ctx.rotate(player.rotation);
+      ctx.fillStyle = '#43e97b'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      
+      if (gameMode === 'wave') {
+        ctx.beginPath(); ctx.moveTo(20, 0); ctx.lineTo(-15, -15); ctx.lineTo(-15, 15); ctx.closePath(); ctx.fill(); ctx.stroke();
+      } else if (gameMode === 'ship') {
+        ctx.beginPath(); ctx.ellipse(0, 0, 25, 15, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      } else if (gameMode === 'ball') {
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      } else {
+        ctx.fillRect(-18, -18, 36, 36); ctx.strokeRect(-18, -18, 36, 36);
+      }
+      ctx.restore();
+
+      scoreDisplay.textContent = `Score: ${score}`;
+      distanceDisplay.textContent = `Distance: ${Math.floor(frameCount/10)}m`;
+      animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function gameOver() {
+      gameRunning = false;
+      gameOverScreen.classList.add('show');
+      finalScoreDisplay.textContent = `Final Score: ${score}`;
+    }
+
+    function jump() {
+      if (!gameRunning) return;
+      if (gameMode === 'cube' && !player.jumping) { player.velocityY = JUMP_FORCE; player.jumping = true; }
+      else if (gameMode === 'ball') { player.ballFlipped = !player.ballFlipped; }
+      else if (gameMode === 'spider') { player.spiderFlipped = !player.spiderFlipped; }
+    }
+
+    const setInput = (state) => {
+        if (state && !gameRunning && gameOverScreen.classList.contains('show')) { startGame(); return; }
+        if (state) jump();
+        isHoldingJump = state;
+    };
+
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp') setInput(true); });
+    window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp') setInput(false); });
+    canvas.addEventListener('mousedown', () => setInput(true));
+    canvas.addEventListener('mouseup', () => setInput(false));
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+  </script>
+ </body>
+</html>
